@@ -58,19 +58,22 @@ def build_long_frame(returns):
     return df_long
 
 
-def forecast_returns_statsforecast(train_returns, horizon=21):
+def forecast_returns_statsforecast(train_returns, horizon=21, return_raw=False):
     """
     Прогноз доходностей для всех акций с помощью StatsForecast AutoARIMA.
 
     Args:
         train_returns: DataFrame с доходностями (train период)
         horizon: горизонт прогноза в днях
+        return_raw: если True, вернуть также raw прогнозы (horizon × N_tickers)
 
     Returns:
         mu: вектор ожидаемых годовых доходностей
+        raw_forecasts: DataFrame (horizon × N_tickers) — если return_raw=True
     """
     df_long = build_long_frame(train_returns)
     fallback = train_returns.mean()
+    tickers = train_returns.columns
 
     model = AutoARIMA(
         max_p=MAX_P,
@@ -90,16 +93,49 @@ def forecast_returns_statsforecast(train_returns, horizon=21):
     try:
         forecast_df = sf.forecast(h=horizon, df=df_long)
     except Exception:
-        return fallback.values * 252
+        # Fallback: константный прогноз
+        mu = fallback.values * 252
+        if return_raw:
+            raw = pd.DataFrame(
+                np.tile(fallback.values, (horizon, 1)),
+                columns=tickers
+            )
+            return mu, raw
+        return mu
 
     col_name = 'AutoARIMA'
     if col_name not in forecast_df.columns:
-        return fallback.values * 252
+        mu = fallback.values * 252
+        if return_raw:
+            raw = pd.DataFrame(
+                np.tile(fallback.values, (horizon, 1)),
+                columns=tickers
+            )
+            return mu, raw
+        return mu
 
-    preds = forecast_df.groupby('unique_id')[col_name].mean()
-    preds = preds.reindex(train_returns.columns).fillna(fallback)
+    # Собираем raw прогнозы в wide формат (horizon × N_tickers)
+    # forecast_df имеет unique_id как индекс и колонки ds, AutoARIMA
+    forecast_df = forecast_df.reset_index()
 
-    return preds.values * 252
+    # Pivot: строки = порядковый номер прогноза (0..horizon-1), колонки = тикеры
+    raw_forecasts = pd.DataFrame(index=range(horizon), columns=tickers, dtype=float)
+
+    for ticker in tickers:
+        ticker_data = forecast_df[forecast_df['unique_id'] == ticker][col_name].values
+        if len(ticker_data) == horizon:
+            raw_forecasts[ticker] = ticker_data
+        else:
+            # Fallback для этого тикера
+            raw_forecasts[ticker] = fallback[ticker]
+
+    # mu = среднее по дням × 252
+    preds = raw_forecasts.mean(axis=0)
+    mu = preds.values * 252
+
+    if return_raw:
+        return mu, raw_forecasts
+    return mu
 
 
 def compute_monthly_log_return(test_data, weights, fully_invested=True):
@@ -111,14 +147,24 @@ def compute_monthly_log_return(test_data, weights, fully_invested=True):
     return np.log(portfolio_gross)
 
 
-def run_backtest(returns, save_weights_path=None):
+def run_backtest(returns, save_weights_path=None, collect_forecasts=False):
     """
     Бэктест со скользящим окном.
+
+    Args:
+        returns: DataFrame с лог-доходностями
+        save_weights_path: путь для сохранения весов
+        collect_forecasts: собирать прогнозы для расчёта forecast metrics
+
+    Returns:
+        portfolio_returns: Series с доходностями портфеля
+        forecasts_df: DataFrame с прогнозами (если collect_forecasts=True)
     """
     n = len(returns)
     portfolio_returns = []
     dates = []
     weights_list = [] if save_weights_path else None
+    forecast_records = [] if collect_forecasts else None
 
     print(f"Всего дней: {n}")
     print(f"Train окно: {TRAIN_WINDOW} дней")
@@ -135,7 +181,23 @@ def run_backtest(returns, save_weights_path=None):
         test_data = returns.iloc[i + TRAIN_WINDOW:i + TRAIN_WINDOW + TEST_WINDOW]
 
         # μ из AutoARIMA прогнозов
-        mu = forecast_returns_statsforecast(train_data, horizon=TEST_WINDOW)
+        if collect_forecasts:
+            mu, raw_forecasts = forecast_returns_statsforecast(
+                train_data, horizon=TEST_WINDOW, return_raw=True
+            )
+            # Собираем прогнозы: actual vs predicted (месячные)
+            actual_monthly = test_data.sum(axis=0)  # sum лог-доходностей за 21 день
+            predicted_monthly = raw_forecasts.sum(axis=0)  # sum прогнозов за 21 день
+            for ticker in returns.columns:
+                forecast_records.append({
+                    'date': test_data.index[0],
+                    'ticker': ticker,
+                    'actual': actual_monthly[ticker],
+                    'predicted': predicted_monthly[ticker],
+                    'model': 'ARIMA'
+                })
+        else:
+            mu = forecast_returns_statsforecast(train_data, horizon=TEST_WINDOW)
 
         # Σ — ковариация (годовая)
         cov = compute_covariance(train_data, method=CV_METHOD, annualize=252)
@@ -176,7 +238,13 @@ def run_backtest(returns, save_weights_path=None):
         weights_df = pd.DataFrame(weights_list, index=dates, columns=returns.columns)
         weights_df.to_csv(save_weights_path)
 
-    return pd.Series(portfolio_returns, index=dates)
+    result = pd.Series(portfolio_returns, index=dates)
+
+    if collect_forecasts:
+        forecasts_df = pd.DataFrame(forecast_records)
+        return result, forecasts_df
+
+    return result
 
 
 def calculate_metrics(returns, rf=0.02):
@@ -199,10 +267,14 @@ def calculate_metrics(returns, rf=0.02):
 
     total_return = (1 + simple_returns).prod() - 1
 
+    # Calmar Ratio = Annual Return / |Max Drawdown|
+    calmar = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
+
     return {
         'Annual Return': annual_return,
         'Annual Volatility': annual_vol,
         'Sharpe Ratio': sharpe,
+        'Calmar Ratio': calmar,
         'Max Drawdown': max_drawdown,
         'Total Return': total_return,
         'Num Periods': len(returns)

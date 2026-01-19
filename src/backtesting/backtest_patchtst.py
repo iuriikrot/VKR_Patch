@@ -80,7 +80,7 @@ def select_device():
     return 'cpu'
 
 
-def forecast_returns_patchtst(train_returns, horizon=21, verbose=False):
+def forecast_returns_patchtst(train_returns, horizon=21, verbose=False, return_raw=False):
     """
     Прогноз доходностей для всех акций с помощью PatchTST Self-Supervised.
 
@@ -93,20 +93,25 @@ def forecast_returns_patchtst(train_returns, horizon=21, verbose=False):
         train_returns: DataFrame с доходностями (train период, 1260 дней)
         horizon: горизонт прогноза в днях
         verbose: выводить прогресс обучения
+        return_raw: если True, вернуть также raw прогнозы (horizon × N_tickers)
 
     Returns:
         mu: вектор ожидаемых годовых доходностей
+        raw_forecasts: DataFrame (horizon × N_tickers) — если return_raw=True
     """
-    forecasts = []
+    tickers = train_returns.columns
+    fallback = train_returns.mean()
     device = select_device()
 
-    for ticker in train_returns.columns:
+    # Собираем raw прогнозы для всех тикеров
+    raw_forecasts = pd.DataFrame(index=range(horizon), columns=tickers, dtype=float)
+
+    for ticker in tickers:
         series = train_returns[ticker].values
 
         if len(series) < INPUT_LEN:
-            # Мало данных — берём историческое среднее
-            annual_return = series.mean() * 252
-            forecasts.append(annual_return)
+            # Мало данных — берём историческое среднее (константа на все дни)
+            raw_forecasts[ticker] = fallback[ticker]
             continue
 
         # Создаём модель (параметры из config)
@@ -134,14 +139,12 @@ def forecast_returns_patchtst(train_returns, horizon=21, verbose=False):
         )
 
         # Fine-tuning: обучаем prediction head на supervised данных
-        # Официальный подход: после pretraining переносим веса encoder
-        # и дообучаем prediction head на задаче прогнозирования
         X_train, y_train = create_sequences(series, INPUT_LEN, PRED_LEN)
         if len(X_train) > 0:
             model = finetune_patchtst(
                 model, X_train, y_train,
-                epochs=FINETUNE_EPOCHS,              # Из config
-                lr=PRETRAIN_LR * 0.1,                # Меньший lr для fine-tuning
+                epochs=FINETUNE_EPOCHS,
+                lr=PRETRAIN_LR * 0.1,
                 batch_size=BATCH_SIZE,
                 verbose=verbose
             )
@@ -150,25 +153,43 @@ def forecast_returns_patchtst(train_returns, horizon=21, verbose=False):
         last_input = series[-INPUT_LEN:]
         forecast = forecast_patchtst(model, last_input)
 
-        # Средняя дневная доходность → годовая
-        annual_return = forecast.mean() * 252
-        forecasts.append(annual_return)
+        # Сохраняем raw прогноз (все horizon дней)
+        if len(forecast) == horizon:
+            raw_forecasts[ticker] = forecast
+        else:
+            # Fallback если прогноз другой длины
+            raw_forecasts[ticker] = fallback[ticker]
 
-    return np.array(forecasts)
+    # mu = среднее по дням × 252
+    mu = raw_forecasts.mean(axis=0).values * 252
+
+    if return_raw:
+        return mu, raw_forecasts
+    return mu
 
 
-def run_backtest(returns, save_weights_path=None):
+def run_backtest(returns, save_weights_path=None, collect_forecasts=False):
     """
     Бэктест со скользящим окном.
 
     Использует те же параметры что и Baseline 1 и 2:
     - TRAIN_WINDOW = 1260 дней (5 лет)
     - TEST_WINDOW = 21 день (1 месяц)
+
+    Args:
+        returns: DataFrame с лог-доходностями
+        save_weights_path: путь для сохранения весов (опционально)
+        collect_forecasts: собирать прогнозы для расчёта forecast metrics
+
+    Returns:
+        portfolio_returns: Series с доходностями портфеля
+        forecasts_df: DataFrame с прогнозами (если collect_forecasts=True)
     """
     n = len(returns)
     portfolio_returns = []
     dates = []
     weights_list = [] if save_weights_path else None
+    forecast_records = [] if collect_forecasts else None
 
     device = select_device()
     print(f"Устройство: {device}")
@@ -195,7 +216,25 @@ def run_backtest(returns, save_weights_path=None):
         step += 1
 
         # μ из PatchTST прогнозов
-        mu = forecast_returns_patchtst(train_data, horizon=TEST_WINDOW, verbose=False)
+        if collect_forecasts:
+            mu, raw_forecasts = forecast_returns_patchtst(
+                train_data, horizon=TEST_WINDOW, verbose=False, return_raw=True
+            )
+            # Actual = сумма дневных доходностей за месяц
+            actual_monthly = test_data.sum(axis=0)
+            # Predicted = сумма прогнозов за месяц
+            predicted_monthly = raw_forecasts.sum(axis=0)
+            # Собираем записи для каждого тикера
+            for ticker in returns.columns:
+                forecast_records.append({
+                    'date': test_data.index[0],
+                    'ticker': ticker,
+                    'actual': actual_monthly[ticker],
+                    'predicted': predicted_monthly[ticker],
+                    'model': 'PatchTST'
+                })
+        else:
+            mu = forecast_returns_patchtst(train_data, horizon=TEST_WINDOW, verbose=False)
 
         # Σ — ковариация (годовая)
         cov = compute_covariance(train_data, method=CV_METHOD, annualize=252)
@@ -238,7 +277,12 @@ def run_backtest(returns, save_weights_path=None):
         weights_df = pd.DataFrame(weights_list, index=dates, columns=returns.columns)
         weights_df.to_csv(save_weights_path)
 
-    return pd.Series(portfolio_returns, index=dates)
+    result = pd.Series(portfolio_returns, index=dates)
+
+    if collect_forecasts:
+        forecasts_df = pd.DataFrame(forecast_records)
+        return result, forecasts_df
+    return result
 
 
 def calculate_metrics(returns, rf=0.02):
@@ -261,10 +305,14 @@ def calculate_metrics(returns, rf=0.02):
 
     total_return = (1 + simple_returns).prod() - 1
 
+    # Calmar Ratio = Annual Return / |Max Drawdown|
+    calmar = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
+
     return {
         'Annual Return': annual_return,
         'Annual Volatility': annual_vol,
         'Sharpe Ratio': sharpe,
+        'Calmar Ratio': calmar,
         'Max Drawdown': max_drawdown,
         'Total Return': total_return,
         'Num Periods': len(returns)

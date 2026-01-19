@@ -301,10 +301,14 @@ def calculate_metrics(returns, rf=0.02):
 
     total_return = (1 + simple_returns).prod() - 1
 
+    # Calmar Ratio = Annual Return / |Max Drawdown|
+    calmar = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
+
     return {
         'Annual Return': annual_return,
         'Annual Volatility': annual_vol,
         'Sharpe Ratio': sharpe,
+        'Calmar Ratio': calmar,
         'Max Drawdown': max_drawdown,
         'Total Return': total_return,
         'Num Periods': len(returns)
@@ -331,15 +335,76 @@ def compute_covariance(returns, method="sample", annualize=252):
         raise ValueError(f"Неизвестный метод ковариации: {method}")
     return cov * annualize
 
+
+def calculate_forecast_metrics(actual, predicted):
+    """
+    Рассчитать метрики качества прогноза.
+
+    Args:
+        actual: array — фактические месячные доходности по тикерам
+        predicted: array — прогнозные месячные доходности по тикерам
+
+    Returns:
+        dict с метриками: RMSE, MAE, Hit Rate
+    """
+    # Убираем NaN
+    mask = ~(np.isnan(actual) | np.isnan(predicted))
+    actual = actual[mask]
+    predicted = predicted[mask]
+
+    if len(actual) == 0:
+        return {'rmse': np.nan, 'mae': np.nan, 'hit_rate': np.nan}
+
+    # RMSE
+    rmse = np.sqrt(np.mean((actual - predicted) ** 2))
+
+    # MAE
+    mae = np.mean(np.abs(actual - predicted))
+
+    # Hit Rate (совпадение знаков)
+    nonzero_mask = (actual != 0) & (predicted != 0)
+    if nonzero_mask.sum() > 0:
+        hits = np.sign(actual[nonzero_mask]) == np.sign(predicted[nonzero_mask])
+        hit_rate = hits.mean()
+    else:
+        hit_rate = np.nan
+
+    return {
+        'rmse': rmse,
+        'mae': mae,
+        'hit_rate': hit_rate
+    }
+
+
+def aggregate_forecast_metrics(forecasts_df):
+    """
+    Агрегировать метрики по всем периодам бэктеста.
+
+    Args:
+        forecasts_df: DataFrame с колонками:
+            - date: дата ребалансировки
+            - ticker: тикер
+            - actual: фактическая месячная доходность
+            - predicted: прогнозная месячная доходность
+
+    Returns:
+        dict с агрегированными метриками
+    """
+    actual = forecasts_df['actual'].values
+    predicted = forecasts_df['predicted'].values
+
+    return calculate_forecast_metrics(actual, predicted)
+
 # %% [markdown]
 # ## 4. Baseline 1: Историческое среднее
 
 # %%
-def run_backtest_baseline1(returns, train_window, test_window, rf):
+def run_backtest_baseline1(returns, train_window, test_window, rf, collect_forecasts=True):
     """Бэктест: μ = историческое среднее."""
     n = len(returns)
     portfolio_returns = []
     dates = []
+    forecast_records = [] if collect_forecasts else None
 
     total_steps = (n - train_window - test_window) // test_window + 1
     i = 0
@@ -349,8 +414,30 @@ def run_backtest_baseline1(returns, train_window, test_window, rf):
         train_data = returns.iloc[i:i + train_window]
         test_data = returns.iloc[i + train_window:i + train_window + test_window]
 
-        mu = train_data.mean().values * 252
+        daily_mean = train_data.mean()
+        mu = daily_mean.values * 252
         cov = compute_covariance(train_data, method=COV_METHOD, annualize=252)
+
+        # Собираем прогнозы если нужно
+        if collect_forecasts:
+            # Для Baseline 1: прогноз = историческое среднее на каждый день
+            raw_forecasts = pd.DataFrame(
+                np.tile(daily_mean.values, (test_window, 1)),
+                columns=returns.columns
+            )
+            # Actual = сумма дневных доходностей за месяц
+            actual_monthly = test_data.sum(axis=0)
+            # Predicted = сумма прогнозов за месяц
+            predicted_monthly = raw_forecasts.sum(axis=0)
+            # Собираем записи для каждого тикера
+            for ticker in returns.columns:
+                forecast_records.append({
+                    'date': test_data.index[0],
+                    'ticker': ticker,
+                    'actual': actual_monthly[ticker],
+                    'predicted': predicted_monthly[ticker],
+                    'model': 'Historical'
+                })
 
         weights = maximize_sharpe(
             mu,
@@ -379,16 +466,22 @@ def run_backtest_baseline1(returns, train_window, test_window, rf):
             print(f"  Шаг {step}/{total_steps} ({step*100//total_steps}%)")
 
     print(f"  Завершено: {step} периодов")
-    return pd.Series(portfolio_returns, index=dates)
+    result = pd.Series(portfolio_returns, index=dates)
+
+    if collect_forecasts:
+        forecasts_df = pd.DataFrame(forecast_records)
+        return result, forecasts_df
+    return result
 
 # %%
 print("="*50)
 print("Baseline 1: Историческое среднее")
 print("="*50)
-baseline1_returns = run_backtest_baseline1(log_returns, TRAIN_WINDOW, TEST_WINDOW, RF)
+baseline1_returns, baseline1_forecasts = run_backtest_baseline1(log_returns, TRAIN_WINDOW, TEST_WINDOW, RF)
 baseline1_metrics = calculate_metrics(baseline1_returns, rf=RF)
+baseline1_forecast_metrics = aggregate_forecast_metrics(baseline1_forecasts)
 
-print("\nРезультаты:")
+print("\nРезультаты (Портфель):")
 for name, value in baseline1_metrics.items():
     if 'Return' in name or 'Volatility' in name or 'Drawdown' in name:
         print(f"  {name}: {value:.2%}")
@@ -396,6 +489,11 @@ for name, value in baseline1_metrics.items():
         print(f"  {name}: {value:.2f}")
     else:
         print(f"  {name}: {value}")
+
+print("\nМетрики прогнозов:")
+print(f"  RMSE: {baseline1_forecast_metrics['rmse']:.6f}")
+print(f"  MAE: {baseline1_forecast_metrics['mae']:.6f}")
+print(f"  Hit Rate: {baseline1_forecast_metrics['hit_rate']:.2%}")
 
 # %% [markdown]
 # ## 5. Baseline 2: StatsForecast AutoARIMA
@@ -408,7 +506,7 @@ def build_long_frame(returns):
     return df_long
 
 
-def forecast_returns_statsforecast(train_returns, horizon, max_p, max_d, max_q, stepwise=True):
+def forecast_returns_statsforecast(train_returns, horizon, max_p, max_d, max_q, stepwise=True, return_raw=False):
     """Прогноз доходностей с помощью StatsForecast AutoARIMA."""
     df_long = build_long_frame(train_returns)
     fallback = train_returns.mean()
@@ -426,23 +524,45 @@ def forecast_returns_statsforecast(train_returns, horizon, max_p, max_d, max_q, 
     try:
         forecast_df = sf.forecast(h=horizon, df=df_long)
     except Exception:
+        if return_raw:
+            # Возвращаем константу fallback для всех дней
+            raw = pd.DataFrame(
+                np.tile(fallback.values, (horizon, 1)),
+                columns=train_returns.columns
+            )
+            return fallback.values * 252, raw
         return fallback.values * 252
 
     col_name = 'AutoARIMA'
     if col_name not in forecast_df.columns:
+        if return_raw:
+            raw = pd.DataFrame(
+                np.tile(fallback.values, (horizon, 1)),
+                columns=train_returns.columns
+            )
+            return fallback.values * 252, raw
         return fallback.values * 252
 
+    # Годовая доходность
     preds = forecast_df.groupby('unique_id')[col_name].mean()
     preds = preds.reindex(train_returns.columns).fillna(fallback)
+    mu = preds.values * 252
 
-    return preds.values * 252
+    if return_raw:
+        # Raw прогнозы: pivot для каждого дня
+        raw = forecast_df.pivot(index='ds', columns='unique_id', values=col_name)
+        raw = raw.reindex(columns=train_returns.columns).fillna(fallback)
+        return mu, raw
+
+    return mu
 
 
-def run_backtest_statsforecast(returns, train_window, test_window, rf, max_p, max_d, max_q, stepwise=True):
+def run_backtest_statsforecast(returns, train_window, test_window, rf, max_p, max_d, max_q, stepwise=True, collect_forecasts=True):
     """Бэктест: μ = прогноз StatsForecast AutoARIMA."""
     n = len(returns)
     portfolio_returns = []
     dates = []
+    forecast_records = [] if collect_forecasts else None
 
     total_steps = (n - train_window - test_window) // test_window + 1
     i = 0
@@ -454,7 +574,27 @@ def run_backtest_statsforecast(returns, train_window, test_window, rf, max_p, ma
 
         step += 1
 
-        mu = forecast_returns_statsforecast(train_data, test_window, max_p, max_d, max_q, stepwise)
+        # μ из ARIMA прогнозов
+        if collect_forecasts:
+            mu, raw_forecasts = forecast_returns_statsforecast(
+                train_data, test_window, max_p, max_d, max_q, stepwise, return_raw=True
+            )
+            # Actual = сумма дневных доходностей за месяц
+            actual_monthly = test_data.sum(axis=0)
+            # Predicted = сумма прогнозов за месяц
+            predicted_monthly = raw_forecasts.sum(axis=0)
+            # Собираем записи для каждого тикера
+            for ticker in returns.columns:
+                forecast_records.append({
+                    'date': test_data.index[0],
+                    'ticker': ticker,
+                    'actual': actual_monthly[ticker],
+                    'predicted': predicted_monthly[ticker],
+                    'model': 'StatsForecast'
+                })
+        else:
+            mu = forecast_returns_statsforecast(train_data, test_window, max_p, max_d, max_q, stepwise)
+
         cov = compute_covariance(train_data, method=COV_METHOD, annualize=252)
         weights = maximize_sharpe(
             mu,
@@ -483,7 +623,12 @@ def run_backtest_statsforecast(returns, train_window, test_window, rf, max_p, ma
         i += test_window
 
     print(f"  Завершено: {step} периодов")
-    return pd.Series(portfolio_returns, index=dates)
+    result = pd.Series(portfolio_returns, index=dates)
+
+    if collect_forecasts:
+        forecasts_df = pd.DataFrame(forecast_records)
+        return result, forecasts_df
+    return result
 
 # %%
 print("="*50)
@@ -492,12 +637,13 @@ print("="*50)
 print(f"Параметры: max_p={ARIMA_MAX_P}, max_d={ARIMA_MAX_D}, max_q={ARIMA_MAX_Q}, stepwise={ARIMA_STEPWISE}")
 print("(stepwise=True ускоряет подбор ~10x)\n")
 
-baseline2_returns = run_backtest_statsforecast(
+baseline2_returns, baseline2_forecasts = run_backtest_statsforecast(
     log_returns, TRAIN_WINDOW, TEST_WINDOW, RF, ARIMA_MAX_P, ARIMA_MAX_D, ARIMA_MAX_Q, ARIMA_STEPWISE
 )
 baseline2_metrics = calculate_metrics(baseline2_returns, rf=RF)
+baseline2_forecast_metrics = aggregate_forecast_metrics(baseline2_forecasts)
 
-print("\nРезультаты:")
+print("\nРезультаты (Портфель):")
 for name, value in baseline2_metrics.items():
     if 'Return' in name or 'Volatility' in name or 'Drawdown' in name:
         print(f"  {name}: {value:.2%}")
@@ -505,6 +651,11 @@ for name, value in baseline2_metrics.items():
         print(f"  {name}: {value:.2f}")
     else:
         print(f"  {name}: {value}")
+
+print("\nМетрики прогнозов:")
+print(f"  RMSE: {baseline2_forecast_metrics['rmse']:.6f}")
+print(f"  MAE: {baseline2_forecast_metrics['mae']:.6f}")
+print(f"  Hit Rate: {baseline2_forecast_metrics['hit_rate']:.2%}")
 
 # %% [markdown]
 # ## 6. PatchTST Self-Supervised
@@ -982,16 +1133,21 @@ def finetune_patchtst(model, X_train, y_train, epochs, lr, batch_size, verbose=F
     return model
 
 
-def forecast_returns_patchtst(train_returns, config):
+def forecast_returns_patchtst(train_returns, config, return_raw=False):
     """Прогноз доходностей с помощью PatchTST."""
-    forecasts = []
+    tickers = train_returns.columns
+    fallback = train_returns.mean()
+    horizon = config['pred_length']
 
-    for ticker in train_returns.columns:
+    # Собираем raw прогнозы для всех тикеров
+    raw_forecasts = pd.DataFrame(index=range(horizon), columns=tickers, dtype=float)
+
+    for ticker in tickers:
         series = train_returns[ticker].values
 
         if len(series) < config['input_length']:
-            annual_return = series.mean() * 252
-            forecasts.append(annual_return)
+            # Мало данных — берём историческое среднее (константа на все дни)
+            raw_forecasts[ticker] = fallback[ticker]
             continue
 
         model = PatchTST_SelfSupervised(
@@ -1030,17 +1186,27 @@ def forecast_returns_patchtst(train_returns, config):
         last_input = series[-config['input_length']:]
         forecast = forecast_patchtst(model, last_input)
 
-        annual_return = forecast.mean() * 252
-        forecasts.append(annual_return)
+        # Сохраняем raw прогноз (все horizon дней)
+        if len(forecast) == horizon:
+            raw_forecasts[ticker] = forecast
+        else:
+            # Fallback если прогноз другой длины
+            raw_forecasts[ticker] = fallback[ticker]
 
-    return np.array(forecasts)
+    # mu = среднее по дням × 252
+    mu = raw_forecasts.mean(axis=0).values * 252
+
+    if return_raw:
+        return mu, raw_forecasts
+    return mu
 
 
-def run_backtest_patchtst(returns, train_window, test_window, rf, config):
+def run_backtest_patchtst(returns, train_window, test_window, rf, config, collect_forecasts=True):
     """Бэктест: μ = прогноз PatchTST."""
     n = len(returns)
     portfolio_returns = []
     dates = []
+    forecast_records = [] if collect_forecasts else None
 
     total_steps = (n - train_window - test_window) // test_window + 1
     i = 0
@@ -1052,7 +1218,25 @@ def run_backtest_patchtst(returns, train_window, test_window, rf, config):
 
         step += 1
 
-        mu = forecast_returns_patchtst(train_data, config)
+        # μ из PatchTST прогнозов
+        if collect_forecasts:
+            mu, raw_forecasts = forecast_returns_patchtst(train_data, config, return_raw=True)
+            # Actual = сумма дневных доходностей за месяц
+            actual_monthly = test_data.sum(axis=0)
+            # Predicted = сумма прогнозов за месяц
+            predicted_monthly = raw_forecasts.sum(axis=0)
+            # Собираем записи для каждого тикера
+            for ticker in returns.columns:
+                forecast_records.append({
+                    'date': test_data.index[0],
+                    'ticker': ticker,
+                    'actual': actual_monthly[ticker],
+                    'predicted': predicted_monthly[ticker],
+                    'model': 'PatchTST'
+                })
+        else:
+            mu = forecast_returns_patchtst(train_data, config)
+
         cov = compute_covariance(train_data, method=COV_METHOD, annualize=252)
         weights = maximize_sharpe(
             mu,
@@ -1081,7 +1265,12 @@ def run_backtest_patchtst(returns, train_window, test_window, rf, config):
         i += test_window
 
     print(f"  Завершено: {step} периодов")
-    return pd.Series(portfolio_returns, index=dates)
+    result = pd.Series(portfolio_returns, index=dates)
+
+    if collect_forecasts:
+        forecasts_df = pd.DataFrame(forecast_records)
+        return result, forecasts_df
+    return result
 
 # %%
 print("="*60)
@@ -1093,12 +1282,13 @@ print(f"d_model={D_MODEL}, n_heads={N_HEADS}, n_layers={N_LAYERS}")
 print(f"pretrain_epochs={PRETRAIN_EPOCHS}, finetune_epochs={FINETUNE_EPOCHS}, lr={PRETRAIN_LR}")
 print()
 
-patchtst_returns = run_backtest_patchtst(
+patchtst_returns, patchtst_forecasts = run_backtest_patchtst(
     log_returns, TRAIN_WINDOW, TEST_WINDOW, RF, patchtst_config
 )
 patchtst_metrics = calculate_metrics(patchtst_returns, rf=RF)
+patchtst_forecast_metrics = aggregate_forecast_metrics(patchtst_forecasts)
 
-print("\nРезультаты:")
+print("\nРезультаты (Портфель):")
 for name, value in patchtst_metrics.items():
     if 'Return' in name or 'Volatility' in name or 'Drawdown' in name:
         print(f"  {name}: {value:.2%}")
@@ -1107,17 +1297,23 @@ for name, value in patchtst_metrics.items():
     else:
         print(f"  {name}: {value}")
 
+print("\nМетрики прогнозов:")
+print(f"  RMSE: {patchtst_forecast_metrics['rmse']:.6f}")
+print(f"  MAE: {patchtst_forecast_metrics['mae']:.6f}")
+print(f"  Hit Rate: {patchtst_forecast_metrics['hit_rate']:.2%}")
+
 # %% [markdown]
 # ## 7. Сравнение результатов
 
 # %%
 comparison_df = pd.DataFrame({
     'Метрика': ['Годовая доходность', 'Годовая волатильность', 'Коэффициент Шарпа',
-                'Максимальная просадка', 'Общая доходность'],
+                'Коэффициент Кальмара', 'Максимальная просадка', 'Общая доходность'],
     'Baseline 1 (Ист. среднее)': [
         f"{baseline1_metrics['Annual Return']:.2%}",
         f"{baseline1_metrics['Annual Volatility']:.2%}",
         f"{baseline1_metrics['Sharpe Ratio']:.2f}",
+        f"{baseline1_metrics['Calmar Ratio']:.2f}",
         f"{baseline1_metrics['Max Drawdown']:.2%}",
         f"{baseline1_metrics['Total Return']:.2%}"
     ],
@@ -1125,6 +1321,7 @@ comparison_df = pd.DataFrame({
         f"{baseline2_metrics['Annual Return']:.2%}",
         f"{baseline2_metrics['Annual Volatility']:.2%}",
         f"{baseline2_metrics['Sharpe Ratio']:.2f}",
+        f"{baseline2_metrics['Calmar Ratio']:.2f}",
         f"{baseline2_metrics['Max Drawdown']:.2%}",
         f"{baseline2_metrics['Total Return']:.2%}"
     ],
@@ -1132,6 +1329,7 @@ comparison_df = pd.DataFrame({
         f"{patchtst_metrics['Annual Return']:.2%}",
         f"{patchtst_metrics['Annual Volatility']:.2%}",
         f"{patchtst_metrics['Sharpe Ratio']:.2f}",
+        f"{patchtst_metrics['Calmar Ratio']:.2f}",
         f"{patchtst_metrics['Max Drawdown']:.2%}",
         f"{patchtst_metrics['Total Return']:.2%}"
     ]

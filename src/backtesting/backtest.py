@@ -33,20 +33,24 @@ FULLY_INVESTED = CONSTRAINTS.get('fully_invested', True)
 GROSS_EXPOSURE = CONSTRAINTS.get('gross_exposure')
 
 
-def run_backtest(returns, save_weights_path=None):
+def run_backtest(returns, save_weights_path=None, collect_forecasts=False):
     """
     Запуск бэктеста со скользящим окном.
 
     Args:
         returns: DataFrame с лог-доходностями
+        save_weights_path: путь для сохранения весов (опционально)
+        collect_forecasts: собирать прогнозы для расчёта forecast metrics
 
     Returns:
         portfolio_returns: Series с доходностями портфеля
+        forecasts_df: DataFrame с прогнозами (если collect_forecasts=True)
     """
     n = len(returns)
     portfolio_returns = []
     dates = []
     weights_list = [] if save_weights_path else None
+    forecast_records = [] if collect_forecasts else None
 
     print(f"Всего дней: {n}")
     print(f"Train окно: {TRAIN_WINDOW} дней (5 лет)")
@@ -63,8 +67,31 @@ def run_backtest(returns, save_weights_path=None):
         test_data = returns.iloc[i + TRAIN_WINDOW:i + TRAIN_WINDOW + TEST_WINDOW]
 
         # Считаем μ и Σ на train (годовые)
-        mu = train_data.mean() * 252
+        daily_mean = train_data.mean()  # Дневное историческое среднее
+        mu = daily_mean * 252  # Годовое для оптимизации
         cov = compute_covariance(train_data, method=CV_METHOD, annualize=252)
+
+        # Собираем прогнозы если нужно
+        if collect_forecasts:
+            # Для Baseline 1: прогноз = историческое среднее на каждый день
+            # raw_forecasts: horizon × N_tickers (константа daily_mean)
+            raw_forecasts = pd.DataFrame(
+                np.tile(daily_mean.values, (TEST_WINDOW, 1)),
+                columns=returns.columns
+            )
+            # Actual = сумма дневных доходностей за месяц
+            actual_monthly = test_data.sum(axis=0)
+            # Predicted = сумма прогнозов за месяц = daily_mean × TEST_WINDOW
+            predicted_monthly = raw_forecasts.sum(axis=0)
+            # Собираем записи для каждого тикера
+            for ticker in returns.columns:
+                forecast_records.append({
+                    'date': test_data.index[0],
+                    'ticker': ticker,
+                    'actual': actual_monthly[ticker],
+                    'predicted': predicted_monthly[ticker],
+                    'model': 'Historical'
+                })
 
         # Оптимизируем веса
         weights = maximize_sharpe(
@@ -102,7 +129,12 @@ def run_backtest(returns, save_weights_path=None):
         weights_df = pd.DataFrame(weights_list, index=dates, columns=returns.columns)
         weights_df.to_csv(save_weights_path)
 
-    return pd.Series(portfolio_returns, index=dates)
+    result = pd.Series(portfolio_returns, index=dates)
+
+    if collect_forecasts:
+        forecasts_df = pd.DataFrame(forecast_records)
+        return result, forecasts_df
+    return result
 
 
 def calculate_metrics(returns, rf=0.02):
@@ -142,10 +174,14 @@ def calculate_metrics(returns, rf=0.02):
     # Общая доходность за период
     total_return = (1 + simple_returns).prod() - 1
 
+    # Calmar Ratio = Annual Return / |Max Drawdown|
+    calmar = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
+
     return {
         'Annual Return': annual_return,
         'Annual Volatility': annual_vol,
         'Sharpe Ratio': sharpe,
+        'Calmar Ratio': calmar,
         'Max Drawdown': max_drawdown,
         'Total Return': total_return,
         'Num Periods': len(returns)

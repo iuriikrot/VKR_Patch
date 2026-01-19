@@ -23,8 +23,11 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from optimization.markowitz import maximize_sharpe
 from optimization.covariance import compute_covariance
+from utils.forecast_metrics import aggregate_forecast_metrics
 try:
     from backtesting.backtest_statsforecast import run_backtest as run_statsforecast
+    from backtesting.backtest_patchtst import run_backtest as run_patchtst_backtest
+    from backtesting.backtest import run_backtest as run_baseline1_backtest
 except ImportError as exc:
     raise ImportError(
         "statsforecast не установлен. Установите: pip install statsforecast"
@@ -70,10 +73,14 @@ def calculate_metrics(returns, rf=0.02):
 
     total_return = (1 + simple_returns).prod() - 1
 
+    # Calmar Ratio = Annual Return / |Max Drawdown|
+    calmar = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
+
     return {
         'Annual Return': annual_return,
         'Annual Volatility': annual_vol,
         'Sharpe Ratio': sharpe,
+        'Calmar Ratio': calmar,
         'Max Drawdown': max_drawdown,
         'Total Return': total_return,
         'Num Periods': len(returns)
@@ -93,194 +100,40 @@ def compute_monthly_log_return(test_data, weights, fully_invested=True):
 # BASELINE 1: Историческое среднее
 # ============================================================
 
-def run_baseline1(returns, save_weights_path=None):
+def run_baseline1(returns, save_weights_path=None, collect_forecasts=False):
     """Бэктест: μ = историческое среднее."""
-    n = len(returns)
-    portfolio_returns = []
-    dates = []
-    weights_list = [] if save_weights_path else None
-
-    i = 0
-    while i + TRAIN_WINDOW + TEST_WINDOW <= n:
-        train_data = returns.iloc[i:i + TRAIN_WINDOW]
-        test_data = returns.iloc[i + TRAIN_WINDOW:i + TRAIN_WINDOW + TEST_WINDOW]
-
-        mu = train_data.mean().values * 252
-        cov = compute_covariance(train_data, method=CV_METHOD, annualize=252)
-        weights = maximize_sharpe(
-            mu,
-            cov,
-            rf=RF,
-            min_weight=MIN_WEIGHT,
-            max_weight=MAX_WEIGHT,
-            long_only=LONG_ONLY,
-            fully_invested=FULLY_INVESTED,
-            gross_exposure=GROSS_EXPOSURE
-        )
-
-        month_return = compute_monthly_log_return(
-            test_data,
-            weights,
-            fully_invested=FULLY_INVESTED
-        )
-
-        portfolio_returns.append(month_return)
-        dates.append(test_data.index[0])
-        if weights_list is not None:
-            weights_list.append(weights)
-        i += TEST_WINDOW
-
-    if weights_list is not None:
-        weights_df = pd.DataFrame(weights_list, index=dates, columns=returns.columns)
-        weights_df.to_csv(save_weights_path)
-
-    return pd.Series(portfolio_returns, index=dates)
+    return run_baseline1_backtest(
+        returns,
+        save_weights_path=save_weights_path,
+        collect_forecasts=collect_forecasts
+    )
 
 
 # ============================================================
 # BASELINE 2: StatsForecast AutoARIMA
 # ============================================================
 
-def run_baseline2(returns, save_weights_path=None):
+def run_baseline2(returns, save_weights_path=None, collect_forecasts=False):
     """Бэктест: μ = прогноз StatsForecast AutoARIMA."""
-    return run_statsforecast(returns, save_weights_path=save_weights_path)
+    return run_statsforecast(
+        returns,
+        save_weights_path=save_weights_path,
+        collect_forecasts=collect_forecasts
+    )
 
 
 # ============================================================
 # PATCHTST
 # ============================================================
 
-def run_patchtst(returns, mode='full', save_weights_path=None):
+def run_patchtst(returns, mode='full', save_weights_path=None, collect_forecasts=False):
     """Бэктест: μ = прогноз PatchTST."""
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    import math
-
-    # Загружаем параметры PatchTST
-    patchtst_config = config['models']['patchtst'][mode]
-
-    INPUT_LEN = patchtst_config['input_length']
-    PRED_LEN = patchtst_config['pred_length']
-    PATCH_LEN = patchtst_config['patch_length']
-    STRIDE = patchtst_config['stride']
-    D_MODEL = patchtst_config['d_model']
-    N_HEADS = patchtst_config['n_heads']
-    N_LAYERS = patchtst_config['n_layers']
-    D_FF = patchtst_config['d_ff']
-    DROPOUT = patchtst_config['dropout']
-    USE_REVIN = patchtst_config['use_revin']
-    MASK_RATIO = patchtst_config['mask_ratio']
-    PRETRAIN_EPOCHS = patchtst_config['pretrain_epochs']
-    FINETUNE_EPOCHS = patchtst_config.get('finetune_epochs', 5)  # Fine-tuning epochs
-    PRETRAIN_LR = patchtst_config['pretrain_lr']
-    BATCH_SIZE = patchtst_config['batch_size']
-
-    def select_device():
-        if torch.backends.mps.is_available():
-            return 'mps'
-        if torch.cuda.is_available():
-            return 'cuda'
-        return 'cpu'
-
-    device = select_device()
-
-    # Импортируем модель
-    from models.patchtst import (
-        PatchTST_SelfSupervised, pretrain_patchtst, finetune_patchtst,
-        forecast_patchtst, create_sequences
+    # Примечание: режим (mode) берётся из config, пока игнорируем параметр
+    return run_patchtst_backtest(
+        returns,
+        save_weights_path=save_weights_path,
+        collect_forecasts=collect_forecasts
     )
-
-    n = len(returns)
-    portfolio_returns = []
-    dates = []
-    weights_list = [] if save_weights_path else None
-
-    total_steps = (n - TRAIN_WINDOW - TEST_WINDOW) // TEST_WINDOW + 1
-    i = 0
-    step = 0
-
-    while i + TRAIN_WINDOW + TEST_WINDOW <= n:
-        train_data = returns.iloc[i:i + TRAIN_WINDOW]
-        test_data = returns.iloc[i + TRAIN_WINDOW:i + TRAIN_WINDOW + TEST_WINDOW]
-
-        step += 1
-        if step % 5 == 0 or step == 1:
-            print(f"    PatchTST: шаг {step}/{total_steps}")
-
-        forecasts = []
-        for ticker in train_data.columns:
-            series = train_data[ticker].values
-
-            model = PatchTST_SelfSupervised(
-                input_len=INPUT_LEN,
-                pred_len=PRED_LEN,
-                patch_len=PATCH_LEN,
-                stride=STRIDE,
-                d_model=D_MODEL,
-                n_heads=N_HEADS,
-                n_layers=N_LAYERS,
-                d_ff=D_FF,
-                dropout=DROPOUT,
-                mask_ratio=MASK_RATIO,
-                use_revin=USE_REVIN
-            ).to(device)
-
-            model = pretrain_patchtst(
-                model, series,
-                epochs=PRETRAIN_EPOCHS,
-                lr=PRETRAIN_LR,
-                batch_size=BATCH_SIZE,
-                verbose=False
-            )
-
-            # Fine-tuning: обучаем prediction head (официальный подход)
-            # После pretraining переносим веса encoder и дообучаем prediction head
-            X_train, y_train = create_sequences(series, INPUT_LEN, PRED_LEN)
-            if len(X_train) > 0:
-                model = finetune_patchtst(
-                    model, X_train, y_train,
-                    epochs=FINETUNE_EPOCHS,
-                    lr=PRETRAIN_LR * 0.1,  # Меньший lr для fine-tuning
-                    batch_size=BATCH_SIZE,
-                    verbose=False
-                )
-
-            last_input = series[-INPUT_LEN:]
-            forecast = forecast_patchtst(model, last_input)
-            annual_return = forecast.mean() * 252
-            forecasts.append(annual_return)
-
-        mu = np.array(forecasts)
-        cov = compute_covariance(train_data, method=CV_METHOD, annualize=252)
-        weights = maximize_sharpe(
-            mu,
-            cov,
-            rf=RF,
-            min_weight=MIN_WEIGHT,
-            max_weight=MAX_WEIGHT,
-            long_only=LONG_ONLY,
-            fully_invested=FULLY_INVESTED,
-            gross_exposure=GROSS_EXPOSURE
-        )
-
-        month_return = compute_monthly_log_return(
-            test_data,
-            weights,
-            fully_invested=FULLY_INVESTED
-        )
-
-        portfolio_returns.append(month_return)
-        dates.append(test_data.index[0])
-        if weights_list is not None:
-            weights_list.append(weights)
-        i += TEST_WINDOW
-
-    if weights_list is not None:
-        weights_df = pd.DataFrame(weights_list, index=dates, columns=returns.columns)
-        weights_df.to_csv(save_weights_path)
-
-    return pd.Series(portfolio_returns, index=dates)
 
 
 # ============================================================
@@ -364,64 +217,88 @@ def main():
     if "baseline1" in selected_models:
         step_num += 1
         print(f"[{step_num}/{total_steps}] Baseline 1: Историческое среднее...")
-        baseline1_returns = run_baseline1(
+        baseline1_result = run_baseline1(
             returns,
-            save_weights_path=results_dir / f"baseline1_weights_{timestamp}.csv"
+            save_weights_path=results_dir / f"baseline1_weights_{timestamp}.csv",
+            collect_forecasts=True
         )
+        baseline1_returns, baseline1_forecasts = baseline1_result
+        forecast_metrics = aggregate_forecast_metrics(baseline1_forecasts)
         results['baseline1'] = {
             'returns': baseline1_returns,
-            'metrics': calculate_metrics(baseline1_returns, rf=RF)
+            'metrics': calculate_metrics(baseline1_returns, rf=RF),
+            'forecast_metrics': forecast_metrics,
+            'forecasts': baseline1_forecasts
         }
         print(f"      Sharpe: {results['baseline1']['metrics']['Sharpe Ratio']:.2f}")
+        print(f"      RMSE: {forecast_metrics['rmse']:.6f}, MAE: {forecast_metrics['mae']:.6f}, Hit Rate: {forecast_metrics['hit_rate']:.2%}")
         print()
 
     # Baseline 2
     if "baseline2" in selected_models:
         step_num += 1
         print(f"[{step_num}/{total_steps}] Baseline 2: StatsForecast AutoARIMA...")
-        baseline2_returns = run_baseline2(
+        baseline2_result = run_baseline2(
             returns,
-            save_weights_path=results_dir / f"statsforecast_weights_{timestamp}.csv"
+            save_weights_path=results_dir / f"statsforecast_weights_{timestamp}.csv",
+            collect_forecasts=True
         )
+        baseline2_returns, baseline2_forecasts = baseline2_result
+        forecast_metrics = aggregate_forecast_metrics(baseline2_forecasts)
         results['baseline2'] = {
             'returns': baseline2_returns,
-            'metrics': calculate_metrics(baseline2_returns, rf=RF)
+            'metrics': calculate_metrics(baseline2_returns, rf=RF),
+            'forecast_metrics': forecast_metrics,
+            'forecasts': baseline2_forecasts
         }
         print(f"      Sharpe: {results['baseline2']['metrics']['Sharpe Ratio']:.2f}")
+        print(f"      RMSE: {forecast_metrics['rmse']:.6f}, MAE: {forecast_metrics['mae']:.6f}, Hit Rate: {forecast_metrics['hit_rate']:.2%}")
         print()
 
     # PatchTST
     if "patchtst" in selected_models:
         step_num += 1
         print(f"[{step_num}/{total_steps}] PatchTST Self-Supervised ({patchtst_mode})...")
-        patchtst_returns = run_patchtst(
+        patchtst_result = run_patchtst(
             returns,
             mode=patchtst_mode,
-            save_weights_path=results_dir / f"patchtst_weights_{timestamp}.csv"
+            save_weights_path=results_dir / f"patchtst_weights_{timestamp}.csv",
+            collect_forecasts=True
         )
+        patchtst_returns, patchtst_forecasts = patchtst_result
+        forecast_metrics = aggregate_forecast_metrics(patchtst_forecasts)
         results['patchtst'] = {
             'returns': patchtst_returns,
-            'metrics': calculate_metrics(patchtst_returns, rf=RF)
+            'metrics': calculate_metrics(patchtst_returns, rf=RF),
+            'forecast_metrics': forecast_metrics,
+            'forecasts': patchtst_forecasts
         }
         print(f"      Sharpe: {results['patchtst']['metrics']['Sharpe Ratio']:.2f}")
+        print(f"      RMSE: {forecast_metrics['rmse']:.6f}, MAE: {forecast_metrics['mae']:.6f}, Hit Rate: {forecast_metrics['hit_rate']:.2%}")
         print()
 
-    # CSV с доходностями
+    # CSV с доходностями и прогнозами
     if "baseline1" in results:
         results["baseline1"]["returns"].to_csv(results_dir / f"baseline1_returns_{timestamp}.csv")
+        results["baseline1"]["forecasts"].to_csv(results_dir / f"baseline1_forecasts_{timestamp}.csv", index=False)
     if "baseline2" in results:
         results["baseline2"]["returns"].to_csv(results_dir / f"statsforecast_returns_{timestamp}.csv")
+        results["baseline2"]["forecasts"].to_csv(results_dir / f"statsforecast_forecasts_{timestamp}.csv", index=False)
     if "patchtst" in results:
         results["patchtst"]["returns"].to_csv(results_dir / f"patchtst_returns_{timestamp}.csv")
+        results["patchtst"]["forecasts"].to_csv(results_dir / f"patchtst_forecasts_{timestamp}.csv", index=False)
 
-    # Сводная таблица
+    # Сводная таблица (портфельные метрики + метрики прогнозов)
     comparison_data = {}
     if "baseline1" in results:
-        comparison_data['Baseline 1 (Hist Mean)'] = results['baseline1']['metrics']
+        merged = {**results['baseline1']['metrics'], **{f'Forecast_{k}': v for k, v in results['baseline1']['forecast_metrics'].items()}}
+        comparison_data['Baseline 1 (Hist Mean)'] = merged
     if "baseline2" in results:
-        comparison_data['Baseline 2 (StatsForecast)'] = results['baseline2']['metrics']
+        merged = {**results['baseline2']['metrics'], **{f'Forecast_{k}': v for k, v in results['baseline2']['forecast_metrics'].items()}}
+        comparison_data['Baseline 2 (StatsForecast)'] = merged
     if "patchtst" in results:
-        comparison_data['PatchTST'] = results['patchtst']['metrics']
+        merged = {**results['patchtst']['metrics'], **{f'Forecast_{k}': v for k, v in results['patchtst']['forecast_metrics'].items()}}
+        comparison_data['PatchTST'] = merged
     comparison = pd.DataFrame(comparison_data).T
     comparison.to_csv(results_dir / f"comparison_{timestamp}.csv")
 
@@ -434,20 +311,24 @@ def main():
             'risk_free_rate': RF,
             'patchtst_mode': patchtst_mode
         },
-        'metrics': {}
+        'metrics': {},
+        'forecast_metrics': {}
     }
     if "baseline1" in results:
         metrics_json['metrics']['baseline1'] = results['baseline1']['metrics']
+        metrics_json['forecast_metrics']['baseline1'] = results['baseline1']['forecast_metrics']
     if "baseline2" in results:
         metrics_json['metrics']['baseline2'] = results['baseline2']['metrics']
+        metrics_json['forecast_metrics']['baseline2'] = results['baseline2']['forecast_metrics']
     if "patchtst" in results:
         metrics_json['metrics']['patchtst'] = results['patchtst']['metrics']
+        metrics_json['forecast_metrics']['patchtst'] = results['patchtst']['forecast_metrics']
     with open(results_dir / f"metrics_{timestamp}.json", 'w') as f:
         json.dump(metrics_json, f, indent=2, default=str)
 
     # Вывод результатов
     print("=" * 60)
-    print("РЕЗУЛЬТАТЫ")
+    print("РЕЗУЛЬТАТЫ: ПОРТФЕЛЬНЫЕ МЕТРИКИ")
     print("=" * 60)
     labels = []
     if "baseline1" in results:
@@ -460,15 +341,29 @@ def main():
     header = f"\n{'Метрика':<25}" + "".join([f"{label:>12}" for _, label in labels])
     print(header)
     print("-" * (25 + 12 * len(labels)))
-    for metric in ['Annual Return', 'Annual Volatility', 'Sharpe Ratio', 'Max Drawdown', 'Total Return']:
+    for metric in ['Annual Return', 'Annual Volatility', 'Sharpe Ratio', 'Calmar Ratio', 'Max Drawdown', 'Total Return']:
         if 'Ratio' in metric:
             row = f"{metric:<25}" + "".join(
                 [f"{results[key]['metrics'][metric]:>12.2f}" for key, _ in labels]
             )
         else:
             row = f"{metric:<25}" + "".join(
-                [f"{results[key]['metrics'][metric]:>11.2%}" for key, _ in labels]
+                [f"{results[key]['metrics'][metric]:>12.2%}" for key, _ in labels]
             )
+        print(row)
+
+    # Вывод метрик прогнозов
+    print()
+    print("=" * 60)
+    print("РЕЗУЛЬТАТЫ: МЕТРИКИ ПРОГНОЗОВ")
+    print("=" * 60)
+    header = f"\n{'Метрика':<25}" + "".join([f"{label:>12}" for _, label in labels])
+    print(header)
+    print("-" * (25 + 12 * len(labels)))
+    for metric, fmt in [('rmse', '.6f'), ('mae', '.6f'), ('hit_rate', '.2%')]:
+        row = f"{metric.upper():<25}" + "".join(
+            [f"{results[key]['forecast_metrics'][metric]:>12{fmt}}" for key, _ in labels]
+        )
         print(row)
 
     print()
@@ -476,6 +371,7 @@ def main():
     print(f"  - comparison_{timestamp}.csv")
     print(f"  - metrics_{timestamp}.json")
     print(f"  - *_returns_{timestamp}.csv")
+    print(f"  - *_forecasts_{timestamp}.csv")
 
 
 if __name__ == "__main__":
