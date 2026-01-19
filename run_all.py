@@ -372,6 +372,7 @@ def main():
     print(f"  - metrics_{timestamp}.json")
     print(f"  - *_returns_{timestamp}.csv")
     print(f"  - *_forecasts_{timestamp}.csv")
+    print(f"  - *_weights_{timestamp}.csv")
 
 
 if __name__ == "__main__":
