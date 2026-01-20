@@ -374,6 +374,48 @@ def main():
     print(f"  - *_forecasts_{timestamp}.csv")
     print(f"  - *_weights_{timestamp}.csv")
 
+    # Визуализация результатов
+    try:
+        import matplotlib.pyplot as plt
+
+        print("\n" + "=" * 60)
+        print("ВИЗУАЛИЗАЦИЯ РЕЗУЛЬТАТОВ")
+        print("=" * 60)
+
+        # График кумулятивных доходностей
+        fig, ax = plt.subplots(figsize=(14, 7))
+
+        for key, label in labels:
+            simple_returns = np.exp(results[key]['returns']) - 1
+            cumulative = (1 + simple_returns).cumprod()
+            ax.plot(cumulative.index, cumulative.values, label=label, linewidth=2)
+
+        ax.set_title('Сравнение кумулятивных доходностей', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Дата')
+        ax.set_ylabel('Рост капитала ($1 → $X)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        # Сохраняем график
+        plot_path = results_dir / f"cumulative_returns_{timestamp}.png"
+        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+        print(f"\nГрафик сохранен: {plot_path}")
+
+        plt.show()
+
+        # Итоговые значения
+        print("\nРост капитала ($1 → $X):")
+        for key, label in labels:
+            simple_returns = np.exp(results[key]['returns']) - 1
+            cumulative = (1 + simple_returns).cumprod()
+            print(f"  {label}: $1 → ${cumulative.iloc[-1]:.2f}")
+
+    except ImportError:
+        print("\nВизуализация недоступна (matplotlib не установлен)")
+    except Exception as e:
+        print(f"\nОшибка при создании визуализации: {e}")
+
 
 if __name__ == "__main__":
     main()
