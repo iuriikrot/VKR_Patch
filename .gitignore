@@ -35,9 +35,9 @@ env/
 *.swp
 *.swo
 
-# Data files (raw data - download via script)
-data/**/*.csv
-data/**/*.parquet
+# Data files - теперь отслеживаются в git
+# data/**/*.csv
+# data/**/*.parquet
 *.h5
 *.hdf5
 
