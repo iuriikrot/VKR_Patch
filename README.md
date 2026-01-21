@@ -98,7 +98,7 @@ VKR_Patch/
 │   └── utils/
 │       └── forecast_metrics.py   # Метрики прогнозов
 ├── notebooks/
-│   └── 01_portfolio_comparison.ipynb  # Colab notebook
+│   └── portfolio_comparison.ipynb  # Colab notebook
 ├── docs/                         # Документация
 └── results/                      # Результаты экспериментов
 ```
@@ -136,7 +136,7 @@ python3 src/backtesting/backtest_patchtst.py
 
 ### Colab Notebook:
 
-Открыть `notebooks/01_portfolio_comparison.ipynb` в Google Colab.
+Открыть `notebooks/portfolio_comparison.ipynb` в Google Colab.
 
 ## Результаты и метрики
 
