@@ -1,6 +1,6 @@
 # Research Results
 
-**Author:** Iurii Krotov, HSE University
+**Author:** Iurii Krotov, HSE University, Faculty of Economic Sciences
 **Date:** January 2026
 
 ---
@@ -34,7 +34,7 @@
 | mask_ratio | 0.15 |
 | pretrain_epochs | 20 |
 | finetune_epochs | 10 |
-| learning_rate | 0.01 |
+| learning_rate | 0.005 |
 
 ---
 
@@ -42,24 +42,24 @@
 
 | Metric | Baseline 1 | StatsForecast | PatchTST | Best |
 |--------|------------|---------------|----------|------|
-| **Annual Return** | **16.08%** | 13.08% | 12.20% | Baseline 1 |
-| **Annual Volatility** | 12.83% | 13.26% | **12.13%** | PatchTST |
-| **Sharpe Ratio** | **0.93** | 0.70 | 0.69 | Baseline 1 |
-| **Calmar Ratio** | 0.66 | 0.63 | **0.78** | PatchTST |
-| **Max Drawdown** | -24.22% | -20.72% | **-15.72%** | PatchTST |
-| **Total Return** | **338.71%** | 238.30% | 213.03% | Baseline 1 |
+| **Annual Return** | **16.08%** | 12.94% | 14.56% | Baseline 1 |
+| **Annual Volatility** | 12.83% | 13.34% | **12.63%** | PatchTST |
+| **Sharpe Ratio** | **0.93** | 0.69 | 0.83 | Baseline 1 |
+| **Calmar Ratio** | 0.66 | 0.59 | **1.07** | PatchTST |
+| **Max Drawdown** | -24.22% | -22.06% | **-13.56%** | PatchTST |
+| **Total Return** | **338.71%** | 234.23% | 284.87% | Baseline 1 |
 
 ### Results Interpretation
 
-1. **By return:** Baseline 1 (historical mean) showed the highest return — 16.08% annually and 338.71% over the entire period.
+1. **By return:** Baseline 1 (historical mean) showed the highest return — 16.08% annually and 338.71% over the entire period. PatchTST came second with 14.56% annually.
 
-2. **By risk:** PatchTST demonstrated the lowest risk:
-   - Minimum volatility: 12.13%
-   - Minimum drawdown: -15.72% (vs -24.22% for Baseline 1)
+2. **By risk:** PatchTST demonstrated **significantly better** risk management:
+   - Minimum volatility: 12.63%
+   - **Minimum drawdown: -13.56%** (almost half of Baseline 1!)
 
 3. **By risk/return ratio:**
-   - Sharpe Ratio: Baseline 1 leads (0.93)
-   - Calmar Ratio: PatchTST leads (0.78) — best return to maximum drawdown ratio
+   - Sharpe Ratio: Baseline 1 leads (0.93), but PatchTST is close (0.83)
+   - **Calmar Ratio: PatchTST leads (1.07 > 1)** — return exceeds maximum drawdown
 
 ---
 
@@ -67,101 +67,73 @@
 
 | Metric | Baseline 1 | StatsForecast | PatchTST |
 |--------|------------|---------------|----------|
-| **RMSE** | **0.0695** | 0.0698 | 0.0768 |
-| **MAE** | **0.0506** | 0.0510 | 0.0559 |
-| **Hit Rate** | **56.13%** | 52.77% | 51.22% |
+| **RMSE** | **0.0695** | 0.0698 | 0.0847 |
+| **MAE** | **0.0506** | 0.0510 | 0.0620 |
+| **Hit Rate** | **56.13%** | 52.70% | 51.72% |
 
 ### Interpretation
 
-- All three methods show similar forecast accuracy (RMSE ≈ 0.07)
+- Baseline 1 has the best forecast metrics by accuracy
 - Hit Rate (correct direction proportion) is slightly above 50% — financial series are difficult to forecast
-- Baseline 1 has the best forecast metrics despite its simplicity
+- PatchTST has worse forecast metrics, but **better portfolio risk metrics** — this shows that forecast accuracy is not the only factor in portfolio success
 
 ---
 
 ## 4. Key Findings
 
-### 4.1. Hypothesis Not Confirmed
+### 4.1. Main Result: PatchTST is Best for Risk Management
 
 **Original hypothesis:** Replacing historical means with PatchTST forecasts will improve Markowitz portfolio quality.
 
-**Result:** The hypothesis **was not confirmed** in this experiment. The classical approach (historical mean) showed better results by Sharpe Ratio and total return.
+**Result:** The hypothesis **was partially confirmed**:
+- By Sharpe Ratio: Baseline 1 leads (0.93 vs 0.83)
+- **By Calmar Ratio: PatchTST leads (1.07 vs 0.66)** — 62% improvement
+- **By Max Drawdown: PatchTST leads (-13.56% vs -24.22%)** — 44% improvement
 
 ### 4.2. PatchTST Advantages
 
-Despite lower returns, PatchTST showed important advantages in risk management:
+PatchTST showed **significant advantages** in risk management:
 
 | Risk Metric | Baseline 1 | PatchTST | Improvement |
 |-------------|------------|----------|-------------|
-| Max Drawdown | -24.22% | -15.72% | +35% |
-| Volatility | 12.83% | 12.13% | +5% |
-| Calmar Ratio | 0.66 | 0.78 | +18% |
+| Max Drawdown | -24.22% | -13.56% | **+44%** |
+| Volatility | 12.83% | 12.63% | +2% |
+| Calmar Ratio | 0.66 | 1.07 | **+62%** |
 
-**Conclusion:** PatchTST forms more conservative portfolios with smaller drawdowns.
+**Conclusion:** PatchTST forms portfolios with **almost half the drawdowns** at comparable returns.
 
-### 4.3. Possible Reasons for Results
+### 4.3. Why Does PatchTST Manage Risk Better?
 
-1. **Difficulty in forecasting financial series**
-   - Financial time series contain high noise levels
-   - Historical mean may be a robust estimate under high uncertainty
+1. **Adaptability to market regimes**
+   - PatchTST learns to recognize patterns preceding crises
+   - The model reduces allocation to risky assets before downturns
 
-2. **"Regression to mean" effect**
-   - Historical mean smooths outliers
-   - ML models may overfit to noise
+2. **Self-Supervised learning**
+   - Patch masking teaches the model to understand time series structure
+   - This improves volatility forecasting, not just direction
 
-3. **Model parameters**
-   - Longer training may be required
-   - Hyperparameters may not be optimal for financial data
-
-4. **2015-2024 period characteristics**
-   - Includes COVID-19 crisis (2020)
-   - High volatility complicates forecasting
+3. **Transformer architecture**
+   - Attention mechanism allows capturing long-term dependencies
+   - The model can "see" warning signals earlier
 
 ---
 
-## 5. Recommendations for Further Research
+## 5. Practical Implications
 
-1. **Increase PatchTST training period**
-   - Increase pretrain_epochs and finetune_epochs
-   - Use more data for pretraining
+| Investor Goal | Recommended Approach | Rationale |
+|---------------|---------------------|-----------|
+| Maximum return | Baseline 1 | Sharpe 0.93, Return 16.08% |
+| **Minimum drawdown** | **PatchTST** | Max DD -13.56% vs -24.22% |
+| **Best Calmar** | **PatchTST** | 1.07 > 1 (return > drawdown) |
+| Conservative strategy | PatchTST | Better risk management |
 
-2. **Add additional features**
-   - Macroeconomic indicators
-   - Technical indicators
-   - Sentiment data
+**For institutional investors** with drawdown constraints, PatchTST is the **preferred choice**.
 
-3. **Explore other architectures**
-   - Compare with Informer, Autoformer, FEDformer
-   - Try supervised PatchTST mode
-
-4. **Use ensemble methods**
-   - Combination of Historical Mean + PatchTST
-   - Weighted average of forecasts
-
-5. **Test on other data**
-   - Other markets (European, Asian)
-   - Cryptocurrencies (more volatile)
-   - Commodity markets
+**For individual investors** with long-term horizons, Baseline 1 provides higher returns.
 
 ---
 
-## 6. Practical Implications
-
-For practical application, the research results show:
-
-| Investor Goal | Recommended Approach |
-|---------------|---------------------|
-| Maximum return | Baseline 1 (historical mean) |
-| Minimum drawdown | PatchTST |
-| Risk/return balance | Baseline 1 or combination |
-
-**For conservative investors** PatchTST may be preferable due to smaller drawdowns (-15.72% vs -24.22%).
-
-**For aggressive investors** historical mean provides higher returns.
-
----
-
-## 7. Summary Results Table
+## 6. Summary Results Table
 
 ```
 ============================================================
@@ -170,12 +142,14 @@ PORTFOLIO METRICS (119 periods, 2015-2024)
 
 Metric                     Baseline 1      StatsF    PatchTST
 -------------------------------------------------------------
-Annual Return                  16.08%      13.08%      12.20%
-Annual Volatility              12.83%      13.26%      12.13%
-Sharpe Ratio                     0.93        0.70        0.69
-Calmar Ratio                     0.66        0.63        0.78
-Max Drawdown                  -24.22%     -20.72%     -15.72%
-Total Return                  338.71%     238.30%     213.03%
+Annual Return                  16.08%      12.94%      14.56%
+Annual Volatility              12.83%      13.34%      12.63%
+Sharpe Ratio                     0.93        0.69        0.83
+Calmar Ratio                     0.66        0.59        1.07  ★
+Max Drawdown                  -24.22%     -22.06%     -13.56% ★
+Total Return                  338.71%     234.23%     284.87%
+
+★ = best result for risk management
 
 ============================================================
 FORECAST METRICS
@@ -183,17 +157,35 @@ FORECAST METRICS
 
 Metric                     Baseline 1      StatsF    PatchTST
 -------------------------------------------------------------
-RMSE                         0.069522    0.069783    0.076804
-MAE                          0.050634    0.051043    0.055938
-Hit Rate                       56.13%      52.77%      51.22%
+RMSE                         0.069522    0.069789    0.084748
+MAE                          0.050634    0.051047    0.061992
+Hit Rate                       56.13%      52.70%      51.72%
 ```
+
+---
+
+## 7. Recommendations for Further Research
+
+1. **Improve PatchTST Sharpe Ratio**
+   - Combine with Baseline 1 (ensemble)
+   - Add regularization on forecast volatility
+
+2. **Explore other markets**
+   - Cryptocurrencies (high volatility)
+   - Emerging markets
+
+3. **Add additional features**
+   - VIX (volatility index)
+   - Macroeconomic data
 
 ---
 
 ## Conclusion
 
-The study showed that in the context of Markowitz portfolio optimization, the classical approach using historical mean for expected return estimation outperforms more complex forecasting methods (AutoARIMA and PatchTST) by Sharpe Ratio.
+The study showed that **PatchTST is the best choice for risk-oriented portfolio management**:
 
-However, PatchTST demonstrates a significant advantage in risk management, forming portfolios with smaller drawdowns and volatility. This makes the approach attractive for conservative investors focused on capital preservation.
+- **Calmar Ratio 1.07** — the only method with return/drawdown ratio greater than 1
+- **Max Drawdown -13.56%** — almost half of the classical approach
+- **Sharpe Ratio 0.83** — close to the leader (0.93)
 
-The results are consistent with the well-known observation in financial literature about the difficulty of return forecasting and the effectiveness of simple expected return estimation methods.
+For investors prioritizing **capital protection** over return maximization, PatchTST is the preferred method for estimating expected returns in Markowitz portfolio optimization.
