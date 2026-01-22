@@ -1,4 +1,4 @@
-# VKR: PatchTST for Markowitz Portfolio Optimization
+# PatchTST for Markowitz Portfolio Optimization
 
 **Comparison of Return Forecasting Methods for Markowitz Portfolio Optimization: Historical Mean, AutoARIMA, PatchTST Transformer**
 
@@ -85,7 +85,7 @@ All project parameters are set in `config/config.yaml`:
 ## Project Structure
 
 ```
-VKR_Patch/
+patchtst-portfolio-optimization/
 ├── run_all.py                    # Run all models
 ├── config/config.yaml            # Experiment configuration
 ├── data/raw/                     # Data (prices, log_returns)

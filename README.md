@@ -1,4 +1,4 @@
-# VKR: PatchTST для портфельной оптимизации Марковица
+# PatchTST для портфельной оптимизации Марковица
 
 **Сравнение методов прогнозирования доходности для портфельной оптимизации Марковица: Historical Mean, AutoARIMA, PatchTST Transformer**
 
@@ -89,7 +89,7 @@ s.t. Σw_i = 1, w_i >= 0
 ## Структура проекта
 
 ```
-VKR_Patch/
+patchtst-portfolio-optimization/
 ├── run_all.py                    # Запуск всех моделей
 ├── config/config.yaml            # Конфигурация эксперимента
 ├── data/raw/                     # Данные (prices, log_returns)

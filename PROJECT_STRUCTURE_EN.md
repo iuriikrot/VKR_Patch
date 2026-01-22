@@ -1,4 +1,4 @@
-# VKR_Patch Project Structure
+# patchtst-portfolio-optimization Project Structure
 
 ## Quick Start
 
@@ -20,7 +20,7 @@ Results are saved to `results/`.
 ## File Tree
 
 ```
-VKR_Patch/
+patchtst-portfolio-optimization/
 ├── config/
 │   └── config.yaml                 # Experiment configuration
 │

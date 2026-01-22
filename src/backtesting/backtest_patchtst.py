@@ -31,11 +31,31 @@ from models.patchtst import (
 )
 
 import torch
+import random
+
+
+def set_seed(seed: int):
+    """Установка seed для воспроизводимости результатов."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 # Загружаем конфигурацию
 config_path = Path(__file__).parent.parent.parent / "config" / "config.yaml"
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
+
+# Воспроизводимость: устанавливаем seed
+RANDOM_SEED = config.get('random_seed', 42)
+set_seed(RANDOM_SEED)
 
 # Параметры бэктеста из config
 TRAIN_WINDOW = config['backtest']['train_window']  # 1260 дней (5 лет)

@@ -1,4 +1,4 @@
-# Структура проекта VKR_Patch
+# Структура проекта patchtst-portfolio-optimization
 
 ## Быстрый старт
 
@@ -20,7 +20,7 @@ python run_all.py --fast
 ## Дерево файлов
 
 ```
-VKR_Patch/
+patchtst-portfolio-optimization/
 ├── config/
 │   └── config.yaml                 # Конфигурация эксперимента
 │
