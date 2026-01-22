@@ -66,12 +66,10 @@ VKR_Patch/
 │
 ├── results/                        # Результаты бэктестов
 │
-├── docs/
-│   ├── PROJECT_PLAN.md             # План развития проекта
-│   └── markowitz_formula.png       # Формула оптимизации
-│
 ├── .gitignore
-├── README.md
+├── LICENSE                         # MIT лицензия
+├── README.md                       # Описание проекта
+├── RESULTS.md                      # Результаты исследования
 ├── PROJECT_STRUCTURE.md            # Этот файл
 ├── requirements.txt                # Зависимости Python
 └── run_all.py                      # Запуск всех моделей + сохранение в results/
