@@ -103,8 +103,9 @@ VKR_Patch/
 │       └── forecast_metrics.py   # Метрики прогнозов
 ├── notebooks/
 │   └── portfolio_comparison.ipynb  # Colab notebook
-├── docs/                         # Документация
-└── results/                      # Результаты экспериментов
+├── results/                      # Результаты экспериментов
+├── LICENSE                       # MIT лицензия
+└── RESULTS.md                    # Результаты исследования
 ```
 
 ## Установка
@@ -143,6 +144,8 @@ python3 src/backtesting/backtest_patchtst.py
 Открыть `notebooks/portfolio_comparison.ipynb` в Google Colab.
 
 ## Результаты и метрики
+
+**Подробный анализ результатов:** [RESULTS.md](RESULTS.md)
 
 - Метрики считаются по месячным доходностям (ребалансировка раз в месяц).
 - Веса портфеля сохраняются в `results/*_weights.csv`.
