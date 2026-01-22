@@ -1,5 +1,11 @@
 # VKR: PatchTST для портфельной оптимизации Марковица
 
+**Автор:** Кротов Ю.В.
+**ВУЗ:** НИУ ВШЭ
+**Дата:** Январь 2026
+
+---
+
 ## Быстрый старт
 
 ```bash
@@ -150,3 +156,12 @@ python3 src/backtesting/backtest_patchtst.py
 | Annual Volatility | Годовая волатильность |
 | Max Drawdown | Максимальная просадка |
 | Total Return | Общая доходность за период |
+
+## Лицензия
+
+MIT License. См. файл [LICENSE](LICENSE).
+
+### Благодарности
+
+- [PatchTST](https://github.com/yuqinie98/PatchTST) — архитектура трансформера для временных рядов (Apache 2.0)
+- [StatsForecast](https://github.com/Nixtla/statsforecast) — AutoARIMA реализация
