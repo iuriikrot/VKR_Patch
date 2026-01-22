@@ -128,6 +128,21 @@ The script will ask:
 - whether to download data
 - which models to run
 
+### Background execution (for long tasks):
+
+PatchTST can run for several hours. To keep the process running after closing the terminal:
+
+```bash
+# Run in background (nohup ignores terminal close signal)
+nohup python3 run_all.py > output.log 2>&1 &
+
+# Monitor progress in real-time
+tail -f output.log
+
+# Check if process is running
+ps aux | grep run_all
+```
+
 ### Individual backtests:
 
 ```bash
