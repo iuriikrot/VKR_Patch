@@ -23,6 +23,9 @@
 #==============================================================================
 
 CONFIG = {
+    # Воспроизводимость результатов
+    'random_seed': 42,
+
     # Данные (20 акций из 10 секторов S&P 500)
     'data': {
         'tickers': [
@@ -183,6 +186,7 @@ print("="*60)
 !pip install yfinance statsforecast torch -q
 
 # %%
+import random
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -198,6 +202,20 @@ from sklearn.covariance import LedoitWolf
 import warnings
 warnings.filterwarnings('ignore')
 
+
+def set_seed(seed: int):
+    """Установка seed для воспроизводимости результатов."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 # Настройки отображения
 pd.set_option('display.max_columns', None)
 pd.set_option('display.float_format', '{:.4f}'.format)
@@ -211,6 +229,11 @@ elif torch.cuda.is_available():
 else:
     device = 'cpu'
 print(f"PyTorch device: {device}")
+
+# Воспроизводимость: устанавливаем seed
+RANDOM_SEED = CONFIG.get('random_seed', 42)
+set_seed(RANDOM_SEED)
+print(f"Random seed: {RANDOM_SEED}")
 
 # %% [markdown]
 # ## 2. Загрузка данных
