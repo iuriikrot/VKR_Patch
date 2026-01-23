@@ -6,11 +6,8 @@
 # 1. Установка зависимостей
 pip install -r requirements.txt
 
-# 2. Запуск всех моделей (рекомендуется)
+# 2. Запуск всех моделей
 python run_all.py
-
-# 3. Или быстрый режим PatchTST (для отладки)
-python run_all.py --fast
 ```
 
 Результаты сохраняются в `results/`.
@@ -225,9 +222,6 @@ s.t. Σw = 1, w ≥ 0
 ```bash
 # Запуск всех трёх моделей + сохранение результатов в results/
 python run_all.py
-
-# Быстрый режим PatchTST (для отладки)
-python run_all.py --fast
 ```
 
 Результаты сохраняются в `results/`:

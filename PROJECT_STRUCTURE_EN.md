@@ -6,11 +6,8 @@
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Run all models (recommended)
+# 2. Run all models
 python run_all.py
-
-# 3. Or fast PatchTST mode (for debugging)
-python run_all.py --fast
 ```
 
 Results are saved to `results/`.
@@ -228,9 +225,6 @@ s.t. Σw = 1, w ≥ 0
 ```bash
 # Run all three models + save results to results/
 python run_all.py
-
-# Fast PatchTST mode (for debugging)
-python run_all.py --fast
 ```
 
 Results are saved to `results/`:

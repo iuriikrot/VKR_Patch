@@ -2,10 +2,10 @@
 Запуск всех моделей и сохранение результатов.
 
 Использование:
-    python run_all.py           # Запустить модели
-    python run_all.py --fast    # Быстрый режим PatchTST (для отладки)
+    python run_all.py
 
-Результаты сохраняются в results/
+Результаты сохраняются в results/.
+Все параметры (включая режим PatchTST) берутся из config/config.yaml.
 """
 
 import pandas as pd
@@ -24,14 +24,27 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from optimization.markowitz import maximize_sharpe
 from optimization.covariance import compute_covariance
 from utils.forecast_metrics import aggregate_forecast_metrics
+
+# Импортируем бэктесты по отдельности — чтобы отсутствие одной зависимости
+# не блокировало другие модели
+run_baseline1_backtest = None
+run_statsforecast = None
+run_patchtst_backtest = None
+
+try:
+    from backtesting.backtest import run_backtest as run_baseline1_backtest
+except ImportError:
+    pass
+
 try:
     from backtesting.backtest_statsforecast import run_backtest as run_statsforecast
+except ImportError:
+    pass
+
+try:
     from backtesting.backtest_patchtst import run_backtest as run_patchtst_backtest
-    from backtesting.backtest import run_backtest as run_baseline1_backtest
-except ImportError as exc:
-    raise ImportError(
-        "statsforecast не установлен. Установите: pip install statsforecast"
-    ) from exc
+except ImportError:
+    pass
 
 # Загружаем конфигурацию
 config_path = Path(__file__).parent / "config" / "config.yaml"
@@ -126,9 +139,8 @@ def run_baseline2(returns, save_weights_path=None, collect_forecasts=False):
 # PATCHTST
 # ============================================================
 
-def run_patchtst(returns, mode='full', save_weights_path=None, collect_forecasts=False):
-    """Бэктест: μ = прогноз PatchTST."""
-    # Примечание: режим (mode) берётся из config, пока игнорируем параметр
+def run_patchtst(returns, save_weights_path=None, collect_forecasts=False):
+    """Бэктест: μ = прогноз PatchTST. Режим берётся из config."""
     return run_patchtst_backtest(
         returns,
         save_weights_path=save_weights_path,
@@ -141,10 +153,8 @@ def run_patchtst(returns, mode='full', save_weights_path=None, collect_forecasts
 # ============================================================
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(description='Запуск всех моделей')
-    parser.add_argument('--fast', action='store_true', help='Быстрый режим PatchTST')
-    args = parser.parse_args()
+    # Режим PatchTST берётся из config.yaml (fast/full)
+    patchtst_mode = config['models']['patchtst'].get('mode', 'full')
 
     def prompt_yes_no(prompt, default=False):
         suffix = " [Y/n]: " if default else " [y/N]: "
@@ -173,8 +183,6 @@ def main():
             if selected:
                 return selected
             print("Не удалось распознать выбор. Пример: 1,3")
-
-    patchtst_mode = 'fast' if args.fast else 'full'
 
     # Создаём папку results
     results_dir = Path(__file__).parent / "results"
@@ -261,7 +269,6 @@ def main():
         print(f"[{step_num}/{total_steps}] PatchTST Self-Supervised ({patchtst_mode})...")
         patchtst_result = run_patchtst(
             returns,
-            mode=patchtst_mode,
             save_weights_path=results_dir / f"patchtst_weights_{timestamp}.csv",
             collect_forecasts=True
         )

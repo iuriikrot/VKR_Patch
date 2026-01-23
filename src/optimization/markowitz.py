@@ -5,6 +5,7 @@
 
 import numpy as np
 from scipy.optimize import minimize
+import warnings
 
 
 def maximize_sharpe(
@@ -65,6 +66,9 @@ def maximize_sharpe(
         bounds=bounds,
         constraints=constraints
     )
+
+    if not result.success:
+        warnings.warn(f"Оптимизация не сошлась: {result.message}")
 
     return result.x
 
