@@ -156,20 +156,20 @@ python3 src/backtesting/backtest_statsforecast.py
 python3 src/backtesting/backtest_patchtst.py
 ```
 
-## Results and Metrics
+## Results
 
-**Detailed results analysis:** [RESULTS_EN.md](RESULTS_EN.md)
+**PatchTST — best for risk management** (Calmar Ratio > 1, lowest drawdown):
 
-- Metrics are calculated on monthly returns (monthly rebalancing).
-- Portfolio weights are saved to `results/*_weights.csv`.
+| Metric | Baseline 1 | StatsForecast | PatchTST | Best |
+|--------|------------|---------------|----------|------|
+| Annual Return | **16.08%** | 12.94% | 14.56% | Baseline 1 |
+| Sharpe Ratio | **0.93** | 0.69 | 0.83 | Baseline 1 |
+| Calmar Ratio | 0.66 | 0.59 | **1.07** | PatchTST |
+| Max Drawdown | -24.22% | -22.06% | **-13.56%** | PatchTST |
 
-| Metric | Description |
-|--------|-------------|
-| Sharpe Ratio | Return per unit of risk |
-| Annual Return | Annualized return (CAGR) |
-| Annual Volatility | Annualized volatility |
-| Max Drawdown | Maximum drawdown |
-| Total Return | Total return over period |
+![Cumulative Returns Comparison](results/cumulative_returns_20260122_181947.png)
+
+**Detailed analysis:** [RESULTS_EN.md](RESULTS_EN.md)
 
 ## License
 

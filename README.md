@@ -160,20 +160,20 @@ python3 src/backtesting/backtest_statsforecast.py
 python3 src/backtesting/backtest_patchtst.py
 ```
 
-## Результаты и метрики
+## Результаты
 
-**Подробный анализ результатов:** [RESULTS.md](RESULTS.md)
+**PatchTST — лучший по управлению рисками** (Calmar Ratio > 1, минимальная просадка):
 
-- Метрики считаются по месячным доходностям (ребалансировка раз в месяц).
-- Веса портфеля сохраняются в `results/*_weights.csv`.
+| Метрика | Baseline 1 | StatsForecast | PatchTST | Лучший |
+|---------|------------|---------------|----------|--------|
+| Annual Return | **16.08%** | 12.94% | 14.56% | Baseline 1 |
+| Sharpe Ratio | **0.93** | 0.69 | 0.83 | Baseline 1 |
+| Calmar Ratio | 0.66 | 0.59 | **1.07** | PatchTST |
+| Max Drawdown | -24.22% | -22.06% | **-13.56%** | PatchTST |
 
-| Метрика | Описание |
-|---------|----------|
-| Sharpe Ratio | Доходность на единицу риска |
-| Annual Return | Годовая доходность (CAGR) |
-| Annual Volatility | Годовая волатильность |
-| Max Drawdown | Максимальная просадка |
-| Total Return | Общая доходность за период |
+![Сравнение кумулятивных доходностей](results/cumulative_returns_20260122_181947.png)
+
+**Подробный анализ:** [RESULTS.md](RESULTS.md)
 
 ## Лицензия
 
