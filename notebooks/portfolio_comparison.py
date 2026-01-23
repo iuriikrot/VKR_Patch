@@ -199,7 +199,11 @@ import torch.nn.functional as F
 import math
 from sklearn.covariance import LedoitWolf
 import warnings
-warnings.filterwarnings('ignore')
+# Подавляем шумные warnings от библиотек, но не наши собственные (UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', module='torch')
+warnings.filterwarnings('ignore', module='statsforecast')
 
 
 def set_seed(seed: int):
