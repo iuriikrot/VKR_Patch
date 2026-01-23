@@ -115,6 +115,8 @@ def compute_monthly_log_return(test_data, weights, fully_invested=True):
 
 def run_baseline1(returns, save_weights_path=None, collect_forecasts=False):
     """Бэктест: μ = историческое среднее."""
+    if run_baseline1_backtest is None:
+        raise ImportError("Baseline 1 недоступен: не удалось импортировать backtest.py")
     return run_baseline1_backtest(
         returns,
         save_weights_path=save_weights_path,
@@ -128,6 +130,8 @@ def run_baseline1(returns, save_weights_path=None, collect_forecasts=False):
 
 def run_baseline2(returns, save_weights_path=None, collect_forecasts=False):
     """Бэктест: μ = прогноз StatsForecast AutoARIMA."""
+    if run_statsforecast is None:
+        raise ImportError("Baseline 2 недоступен: не удалось импортировать statsforecast")
     return run_statsforecast(
         returns,
         save_weights_path=save_weights_path,
@@ -141,6 +145,8 @@ def run_baseline2(returns, save_weights_path=None, collect_forecasts=False):
 
 def run_patchtst(returns, save_weights_path=None, collect_forecasts=False):
     """Бэктест: μ = прогноз PatchTST. Режим берётся из config."""
+    if run_patchtst_backtest is None:
+        raise ImportError("PatchTST недоступен: не удалось импортировать torch или patchtst")
     return run_patchtst_backtest(
         returns,
         save_weights_path=save_weights_path,

@@ -119,6 +119,13 @@ def forecast_returns_patchtst(train_returns, horizon=21, verbose=False, return_r
         mu: вектор ожидаемых годовых доходностей
         raw_forecasts: DataFrame (horizon × N_tickers) — если return_raw=True
     """
+    # Проверка согласованности horizon и PRED_LEN из config
+    if horizon != PRED_LEN:
+        warnings.warn(
+            f"horizon ({horizon}) != PRED_LEN ({PRED_LEN}) из config. "
+            f"Модель обучена на pred_len={PRED_LEN}, но запрошен прогноз на {horizon} дней."
+        )
+
     tickers = train_returns.columns
     fallback = train_returns.mean()
     device = select_device()
@@ -177,7 +184,11 @@ def forecast_returns_patchtst(train_returns, horizon=21, verbose=False, return_r
         if len(forecast) == horizon:
             raw_forecasts[ticker] = forecast
         else:
-            # Fallback если прогноз другой длины
+            # Fallback если прогноз другой длины (возможная ошибка конфигурации)
+            warnings.warn(
+                f"Прогноз для {ticker}: len={len(forecast)}, ожидалось horizon={horizon}. "
+                f"Используется fallback (историческое среднее)."
+            )
             raw_forecasts[ticker] = fallback[ticker]
 
     # mu = среднее по дням × 252

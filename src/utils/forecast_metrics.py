@@ -69,6 +69,9 @@ def aggregate_forecast_metrics(forecasts_df):
     Returns:
         dict с агрегированными метриками
     """
+    if forecasts_df is None or len(forecasts_df) == 0:
+        return {'rmse': np.nan, 'mae': np.nan, 'hit_rate': np.nan}
+
     actual = forecasts_df['actual'].values
     predicted = forecasts_df['predicted'].values
 
@@ -91,11 +94,22 @@ def create_forecast_record(date, tickers, actual_monthly, predicted_monthly, mod
     """
     records = []
     for i, ticker in enumerate(tickers):
+        # Используем iloc для позиционного доступа (безопаснее чем [i] для Series)
+        if isinstance(actual_monthly, pd.Series):
+            actual_val = actual_monthly.iloc[i]
+        else:
+            actual_val = actual_monthly[i]
+
+        if isinstance(predicted_monthly, pd.Series):
+            predicted_val = predicted_monthly.iloc[i]
+        else:
+            predicted_val = predicted_monthly[i]
+
         records.append({
             'date': date,
             'ticker': ticker,
-            'actual': actual_monthly[i] if hasattr(actual_monthly, '__getitem__') else actual_monthly.iloc[i],
-            'predicted': predicted_monthly[i] if hasattr(predicted_monthly, '__getitem__') else predicted_monthly.iloc[i],
+            'actual': actual_val,
+            'predicted': predicted_val,
             'model': model_name
         })
     return records
