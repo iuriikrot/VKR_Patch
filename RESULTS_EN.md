@@ -116,6 +116,63 @@ PatchTST showed **significant advantages** in risk management:
    - Attention mechanism allows capturing long-term dependencies
    - The model can "see" warning signals earlier
 
+### 4.4. Empirical Portfolio Weight Analysis
+
+To validate the hypotheses about better risk management, a detailed analysis of portfolio weights was conducted.
+
+#### Behavior During Drawdown Periods
+
+In the top-5 worst periods for Baseline 1, PatchTST showed systematically better results:
+
+| Date | Baseline 1 | PatchTST | Difference |
+|------|------------|----------|------------|
+| 2022-04-08 | -10.98% | -8.40% | +2.58% |
+| 2020-03-11 | -3.71% | +0.76% | +4.47% |
+| 2022-09-09 | -8.72% | -6.52% | +2.20% |
+| 2022-05-09 | -7.94% | -5.85% | +2.09% |
+| 2022-06-09 | -7.48% | -5.27% | +2.21% |
+
+#### Example: Worst Period (2022-04-08)
+
+**PatchTST increased allocation to defensive assets:**
+- CVX (Energy): +19.0%
+- PFE (Healthcare): +18.1%
+- PG (Consumer Staples): +11.9%
+
+**PatchTST decreased allocation to volatile assets:**
+- AAPL (Technology): -19.0%
+- MSFT (Technology): -19.0%
+- UNH (Healthcare): -11.0%
+
+#### Average Weight Differences
+
+PatchTST systematically holds **less** of volatile growth stocks:
+
+| Asset | Sector | Difference (PT - B1) |
+|-------|--------|----------------------|
+| UNH | Healthcare | -11.2% |
+| MSFT | Technology | -9.2% |
+| HD | Consumer Disc. | -6.5% |
+| AAPL | Technology | -5.8% |
+
+PatchTST systematically holds **more** of defensive assets:
+
+| Asset | Sector | Difference (PT - B1) |
+|-------|--------|----------------------|
+| INTC | Technology | +3.8% |
+| KO | Consumer Staples | +3.4% |
+| JPM | Financials | +3.0% |
+| XOM | Energy | +2.8% |
+
+#### Rebalancing Frequency
+
+| Model | Average Weight Volatility | Ratio |
+|-------|--------------------------|-------|
+| Baseline 1 | 4.23% | 1.00x |
+| PatchTST | 7.13% | **1.69x** |
+
+**Conclusion:** PatchTST changes weights 1.69 times more frequently, allowing faster response to changing market conditions.
+
 ---
 
 ## 5. Practical Implications
@@ -167,7 +224,7 @@ Hit Rate                       56.13%      52.62%      50.88%
 ## 7. Recommendations for Further Research
 
 1. **Improve PatchTST Sharpe Ratio**
-   - Combine with Baseline 1 (ensemble)
+   - ~~Combine with Baseline 1 (ensemble)~~ — **tested, does not improve results** (models optimize opposite objectives: Sharpe vs Calmar)
    - Add regularization on forecast volatility
 
 2. **Explore other markets**

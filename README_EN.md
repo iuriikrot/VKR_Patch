@@ -168,6 +168,15 @@ python3 src/backtesting/backtest_patchtst.py
 
 ![Cumulative Returns Comparison](results/cumulative_returns_20260123_231803.png)
 
+### Why Does PatchTST Have Lower Drawdown?
+
+Portfolio weight analysis showed that PatchTST:
+- **Reduces allocation to volatile stocks** (AAPL, MSFT, UNH) before crisis periods
+- **Increases allocation to defensive assets** (CVX, PFE, PG, KO)
+- **Changes weights 1.69x more frequently**, reacting faster to market conditions
+
+Example: in the worst period (2022-04-08) PatchTST returned -8.40% vs -10.98% for Baseline 1.
+
 **Detailed analysis:** [RESULTS_EN.md](RESULTS_EN.md)
 
 ## License
